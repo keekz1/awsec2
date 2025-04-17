@@ -8,7 +8,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
   cors: {
-    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000", "https://www.wesynchro.com"
+    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000",
     ],
           
 
@@ -19,7 +19,7 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json()); // Add this line to parse JSON request bodies
 
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 10000;
 let users = [];
 let tickets = []; // Array to store tickets
 
@@ -87,7 +87,6 @@ io.on("connection", (socket) => {
 
   function broadcastUsers() {
     const validUsers = users.filter(
-      
       (user) =>
         user.isVisible &&
         user.lat !== null &&
