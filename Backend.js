@@ -1,4 +1,3 @@
-//
 const express = require("express");
 const http = require("http");
 const socketIo = require("socket.io");
@@ -9,8 +8,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
   cors: {
-    origin: [      "https://www.wesynchro.com"
-      ,           "https://localhost:3000"
+    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000", "https://www.wesynchro.com"
     ],
           
 
