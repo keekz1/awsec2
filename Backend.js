@@ -45,8 +45,8 @@ app.use(cors(corsOptions));
 
 // 📜 SSL Configuration
 const sslConfig = {
-  key: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com/privkey.pem'),
-  cert: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem'), // This already includes the chain
+  key: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com-0001/privkey.pem'),
+  cert: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com-0001/fullchain.pem'),
   // Remove the 'ca' property completely since fullchain.pem contains everything
   minVersion: "TLSv1.2",
   ciphers: [
