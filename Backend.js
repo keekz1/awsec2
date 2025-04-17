@@ -8,99 +8,75 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
   cors: {
-    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000"
+    origin: [
+      "http://localhost:3000",
+      "https://www.wesynchro.com"
     ],
-          
-
     methods: ["GET", "POST"],
   },
 });
 
 app.use(cors());
-app.use(express.json()); // Add this line to parse JSON request bodies
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 80;
 let users = [];
-let tickets = []; // Array to store tickets
 
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
+  // Initialize user with visible: true
   users.push({
     id: socket.id,
     lat: null,
     lng: null,
     isVisible: true,
-    name: "Anonymous",
-    role: "user",
-    image: "",
+    name: 'Anonymous', // Default name
+    role: 'user' // Set default role, you can adjust this logic as needed
+
   });
 
   socket.on("user-location", (data) => {
     if (!data?.lat || !data?.lng || !data?.role) return;
 
-    const user = users.find((u) => u.id === socket.id);
+    const user = users.find(u => u.id === socket.id);
     if (user) {
       user.lat = data.lat;
       user.lng = data.lng;
-      user.role = data.role;
-      user.name = data.name;
-      user.isVisible = true;
-      user.image = data.image;
-
+      user.role = data.role;  // Update the user's role
+      user.name = data.name; // Update name
+      user.isVisible = true;  // Ensure the user is visible when location updates
       broadcastUsers();
     }
   });
 
+
   socket.on("visibility-change", (isVisible) => {
-    const user = users.find((u) => u.id === socket.id);
+    const user = users.find(u => u.id === socket.id);
     if (user) {
       user.isVisible = isVisible;
       broadcastUsers();
     }
   });
 
-  socket.on("create-ticket", (ticket) => {
-    // Basic validation to ensure all required fields are present
-    if (
-      ticket &&
-      ticket.id &&
-      ticket.lat &&
-      ticket.lng &&
-      ticket.message &&
-      ticket.creatorId &&
-      ticket.creatorName
-    ) {
-      tickets.push(ticket); // Add the ticket to the tickets array
-      io.emit("new-ticket", ticket); // Notify all clients about the new ticket
-      io.emit("all-tickets", tickets); // Notify all clients with the updated ticket list.
-    } else {
-      console.error("Invalid ticket data received:", ticket);
-    }
-  });
-
   socket.on("disconnect", () => {
-    users = users.filter((u) => u.id !== socket.id);
+    users = users.filter(u => u.id !== socket.id);
     broadcastUsers();
     console.log(`User disconnected: ${socket.id}`);
   });
 
+
   function broadcastUsers() {
-    const validUsers = users.filter(
-      (user) =>
-        user.isVisible &&
-        user.lat !== null &&
-        user.lng !== null &&
-        user.name !== null &&
-        user.role !== null &&
-        user.image !== null
+    // Filter valid visible users with valid lat, lng, and role
+    const validUsers = users.filter(user => 
+      user.isVisible && 
+      user.lat !== null && 
+      user.lng !== null &&
+      user.name !== null &&// Ensure name is not null
+      user.role !== null  // Ensure role is not null
     );
-
+    
     io.emit("nearby-users", validUsers);
-    io.emit("all-tickets", tickets); // Send all tickets to newly connected clients
   }
-
-  broadcastUsers(); // Send initial users and tickets list
 });
 
 server.listen(PORT, () => {
