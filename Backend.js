@@ -1,70 +1,94 @@
 const express = require("express");
 const fs = require("fs");
 const https = require("https");
-const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
+const helmet = require("helmet");
+
+// Environment variables setup
+require("dotenv").config();
 
 const app = express();
 
-// 🔐 Add security headers
-app.use((req, res, next) => {
-  res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  next();
-});
+// 🔒 Security middleware
+app.use(helmet());
+app.use(cors({
+  origin: [
+    "https://synchro-kappa.vercel.app",
+    "https://www.wesynchro.com",
+    "http://localhost:3000"
+  ],
+  methods: ["GET", "POST"],
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
-// ✅ Use environment variables for SSL paths (fallback to default if not set)
-const keyPath = process.env.SSL_KEY_PATH || "/etc/letsencrypt/live/api.wesynchro.com/privkey.pem";
-const certPath = process.env.SSL_CERT_PATH || "/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem";
+// 📜 SSL Configuration (with full certificate chain)
+const sslConfig = {
+  key: fs.readFileSync(process.env.SSL_KEY_PATH || "/etc/letsencrypt/live/api.wesynchro.com/privkey.pem"),
+  cert: fs.readFileSync(process.env.SSL_CERT_PATH || "/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem"),
+  ca: [
+    fs.readFileSync(process.env.SSL_CHAIN_PATH || "/etc/letsencrypt/live/api.wesynchro.com/chain.pem")
+  ],
+  minVersion: "TLSv1.2",
+  ciphers: [
+    "ECDHE-ECDSA-AES128-GCM-SHA256",
+    "ECDHE-RSA-AES128-GCM-SHA256",
+    "DHE-RSA-AES128-GCM-SHA256"
+  ].join(":"),
+  honorCipherOrder: true
+};
 
-// 📜 Read SSL certificates
-const server = https.createServer(
-  {
-    key: fs.readFileSync(keyPath),
-    cert: fs.readFileSync(certPath),
-  },
-  app
-);
+const server = https.createServer(sslConfig, app);
 
-// 🔌 Configure Socket.IO
+// 🔌 Enhanced Socket.IO Configuration
 const io = socketIo(server, {
   cors: {
-    origin: [
-      "https://synchro-kappa.vercel.app",
-      "https://www.wesynchro.com",
-      "http://localhost:3000"
-    ],
+    origin: cors().origin,
     methods: ["GET", "POST"],
-    credentials: true,
+    credentials: true
   },
   transports: ["websocket", "polling"],
   allowUpgrades: true,
-  perMessageDeflate: false,
-  pingTimeout: 30000,
-  pingInterval: 10000,
+  perMessageDeflate: {
+    threshold: 1024,
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: true
+  },
+  httpCompression: true,
+  pingTimeout: 25000,
+  pingInterval: 20000,
+  maxHttpBufferSize: 1e7,
+  connectTimeout: 10000,
+  path: "/socket.io",
+  serveClient: false,
   allowEIO3: true,
   allowEIO4: true,
-  cookie: false,
-  serveClient: false,
-  connectTimeout: 5000,
-  maxHttpBufferSize: 1e8,
+  cookie: {
+    name: "io",
+    httpOnly: true,
+    path: "/",
+    sameSite: "strict",
+    secure: true
+  }
 });
 
-// 📦 Middleware
-app.use(cors());
+// 📊 Connection monitoring
+let connectionCount = 0;
+const users = new Map();
+const tickets = new Map();
+
+// 🛠️ Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-const PORT = process.env.PORT || 443;
-let users = [];
-let tickets = [];
-
-// 🔁 Socket.IO logic
+// 🔄 WebSocket Server Logic
 io.on("connection", (socket) => {
-  console.log(`User connected: ${socket.id}`);
+  connectionCount++;
+  console.log(`🔗 New connection (ID: ${socket.id}, Total: ${connectionCount})`);
 
-  users.push({
+  // Initialize user
+  users.set(socket.id, {
     id: socket.id,
     lat: null,
     lng: null,
@@ -72,75 +96,122 @@ io.on("connection", (socket) => {
     name: "Anonymous",
     role: "user",
     image: "",
+    lastUpdate: Date.now()
   });
 
+  // 🎯 Event handlers
   socket.on("user-location", (data) => {
-    if (!data?.lat || !data?.lng || !data?.role) return;
-
-    const user = users.find((u) => u.id === socket.id);
+    if (!validateLocationData(data)) return;
+    
+    const user = users.get(socket.id);
     if (user) {
-      user.lat = data.lat;
-      user.lng = data.lng;
-      user.role = data.role;
-      user.name = data.name;
-      user.isVisible = true;
-      user.image = data.image;
-
+      updateUser(user, data);
       broadcastUsers();
     }
   });
 
   socket.on("visibility-change", (isVisible) => {
-    const user = users.find((u) => u.id === socket.id);
+    const user = users.get(socket.id);
     if (user) {
-      user.isVisible = isVisible;
+      user.isVisible = Boolean(isVisible);
       broadcastUsers();
     }
   });
 
   socket.on("create-ticket", (ticket) => {
-    if (
-      ticket &&
-      ticket.id &&
-      ticket.lat &&
-      ticket.lng &&
-      ticket.message &&
-      ticket.creatorId &&
-      ticket.creatorName
-    ) {
-      tickets.push(ticket);
+    if (validateTicket(ticket)) {
+      tickets.set(ticket.id, ticket);
       io.emit("new-ticket", ticket);
-      io.emit("all-tickets", tickets);
-    } else {
-      console.error("Invalid ticket data received:", ticket);
+      broadcastTickets();
     }
   });
 
   socket.on("disconnect", () => {
-    users = users.filter((u) => u.id !== socket.id);
+    connectionCount--;
+    users.delete(socket.id);
+    console.log(`❌ Disconnected (ID: ${socket.id}, Remaining: ${connectionCount})`);
     broadcastUsers();
-    console.log(`User disconnected: ${socket.id}`);
   });
 
-  function broadcastUsers() {
-    const validUsers = users.filter(
-      (user) =>
-        user.isVisible &&
-        user.lat !== null &&
-        user.lng !== null &&
-        user.name !== null &&
-        user.role !== null &&
-        user.image !== null
-    );
+  // 🛡️ Connection validation
+  socket.use((event, next) => {
+    if (["user-location", "create-ticket"].includes(event[0])) {
+      if (!users.has(socket.id)) return next(new Error("Unauthorized"));
+    }
+    next();
+  });
 
-    io.emit("nearby-users", validUsers);
-    io.emit("all-tickets", tickets);
-  }
-
-  broadcastUsers();
+  // 🚨 Error handling
+  socket.on("error", (err) => {
+    console.error(`🚨 Socket error (${socket.id}):`, err.message);
+  });
 });
 
-// ✅ Use port 443 for HTTPS
+// 🔄 Broadcast functions
+function broadcastUsers() {
+  const validUsers = Array.from(users.values()).filter(user => 
+    user.isVisible &&
+    user.lat !== null &&
+    user.lng !== null &&
+    Date.now() - user.lastUpdate < 300000 // 5 minute staleness
+  );
+  
+  io.emit("nearby-users", validUsers);
+}
+
+function broadcastTickets() {
+  io.emit("all-tickets", Array.from(tickets.values()));
+}
+
+// ✅ Validation utilities
+function validateLocationData(data) {
+  return (
+    data &&
+    typeof data.lat === "number" &&
+    typeof data.lng === "number" &&
+    typeof data.role === "string" &&
+    data.lat >= -90 && data.lat <= 90 &&
+    data.lng >= -180 && data.lng <= 180
+  );
+}
+
+function validateTicket(ticket) {
+  return (
+    ticket &&
+    typeof ticket.id === "string" &&
+    typeof ticket.lat === "number" &&
+    typeof ticket.lng === "number" &&
+    typeof ticket.message === "string" &&
+    typeof ticket.creatorId === "string" &&
+    typeof ticket.creatorName === "string"
+  );
+}
+
+function updateUser(user, data) {
+  user.lat = data.lat;
+  user.lng = data.lng;
+  user.role = data.role;
+  user.name = data.name || "Anonymous";
+  user.image = data.image || "";
+  user.lastUpdate = Date.now();
+}
+
+// 🚀 Start server
+const PORT = process.env.PORT || 443;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Secure server running on port ${PORT}`);
+  console.log(`🔐 SSL Configuration:`);
+  console.log(`- Using TLS v${sslConfig.minVersion}`);
+  console.log(`- Ciphers: ${sslConfig.ciphers}`);
+});
+
+// 🧹 Cleanup on exit
+process.on("SIGINT", () => {
+  console.log("\n🔻 Shutting down gracefully...");
+  io.close(() => {
+    server.close(() => {
+      console.log("✅ Server closed");
+      process.exit(0);
+    });
+  });
 });
