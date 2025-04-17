@@ -45,20 +45,18 @@ app.use(cors(corsOptions));
 
 // 📜 SSL Configuration
 const sslConfig = {
-  key: fs.readFileSync(process.env.SSL_KEY_PATH || "/etc/letsencrypt/live/api.wesynchro.com/privkey.pem"),
-  cert: fs.readFileSync(process.env.SSL_CERT_PATH || "/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem"),
-  ca: fs.readFileSync(process.env.SSL_CHAIN_PATH || "/etc/letsencrypt/live/api.wesynchro.com/chain.pem"),
+  key: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com/privkey.pem'),
+  cert: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem'), // This already includes the chain
+  // Remove the 'ca' property completely since fullchain.pem contains everything
   minVersion: "TLSv1.2",
   ciphers: [
     "TLS_AES_256_GCM_SHA384",
-    "TLS_CHACHA20_POLY1305_SHA256", 
+    "TLS_CHACHA20_POLY1305_SHA256",
     "TLS_AES_128_GCM_SHA256",
     "ECDHE-ECDSA-AES128-GCM-SHA256",
     "ECDHE-RSA-AES128-GCM-SHA256"
   ].join(":"),
-  honorCipherOrder: true,
-  requestCert: false,
-  rejectUnauthorized: false // Set to true in production after testing
+  honorCipherOrder: true
 };
 
 const server = https.createServer(sslConfig, app);
