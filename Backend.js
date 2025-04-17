@@ -8,7 +8,7 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
   cors: {
-    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000","https://www.wesynchro.com",    "http://18.175.220.231",            // EC2 server IP (for direct access via IP)
+    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000","https://www.wesynchro.com","http://18.175.220.231",            // EC2 server IP (for direct access via IP)
 
     ],
           
