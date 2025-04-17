@@ -87,6 +87,7 @@ io.on("connection", (socket) => {
 
   function broadcastUsers() {
     const validUsers = users.filter(
+      
       (user) =>
         user.isVisible &&
         user.lat !== null &&
