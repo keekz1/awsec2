@@ -21,7 +21,7 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json()); // Add this line to parse JSON request bodies
 
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 10000;
 let users = [];
 let tickets = []; // Array to store tickets
 
