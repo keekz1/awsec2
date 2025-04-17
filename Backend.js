@@ -104,6 +104,6 @@ io.on("connection", (socket) => {
   broadcastUsers(); // Send initial users and tickets list
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(80, "0.0.0.0", () => {  // Explicitly listen on all interfaces
+  console.log("Server running on port 80");
 });
