@@ -5,18 +5,27 @@ const cors = require("cors");
 
 const app = express();
 const server = http.createServer(app);
-
 const io = socketIo(server, {
   cors: {
-    origin: ["https://synchro-kappa.vercel.app",           "https://localhost:3000","https://www.wesynchro.com","http://18.175.220.231",            // EC2 server IP (for direct access via IP)
-
+    origin: [
+      "https://synchro-kappa.vercel.app",
+      "https://www.wesynchro.com",
+      "http://localhost:3000", // Changed to http (unless you use HTTPS locally)
+      "http://18.175.220.231"
     ],
-          
-
     methods: ["GET", "POST"],
+    credentials: true // Add this for credentials support
   },
+  // Add these critical Socket.IO options:
+  transports: ["websocket", "polling"], // Explicitly enable both transports
+  allowEIO3: true, // For backwards compatibility
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 120000, // 2 minutes
+    skipMiddlewares: true
+  }
 });
-
 app.use(cors());
 app.use(express.json()); // Add this line to parse JSON request bodies
 
