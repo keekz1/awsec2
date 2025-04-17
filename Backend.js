@@ -47,7 +47,6 @@ app.use(cors(corsOptions));
 const sslConfig = {
   key: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com-0001/privkey.pem'),
   cert: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com-0001/fullchain.pem'),
-  // Remove the 'ca' property completely since fullchain.pem contains everything
   minVersion: "TLSv1.2",
   ciphers: [
     "TLS_AES_256_GCM_SHA384",
@@ -83,8 +82,10 @@ const io = socketIo(server, {
   allowEIO4: true
 });
 
-// Connection tracking
+// Connection tracking and user management
 const connections = new Map();
+let users = [];
+let tickets = [];
 
 // 🛠️ Middleware
 app.use(express.json({ limit: "10kb" }));
@@ -95,6 +96,8 @@ app.get("/health", (req, res) => {
   res.status(200).json({
     status: "healthy",
     connections: connections.size,
+    users: users.length,
+    tickets: tickets.length,
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   });
@@ -105,6 +108,7 @@ io.on("connection", (socket) => {
   const clientId = socket.id;
   const clientIp = socket.handshake.address;
   
+  // Add to connection tracking
   connections.set(clientId, {
     id: clientId,
     ip: clientIp,
@@ -112,23 +116,79 @@ io.on("connection", (socket) => {
     lastActivity: new Date()
   });
 
+  // Initialize new user
+  users.push({
+    id: clientId,
+    lat: null,
+    lng: null,
+    isVisible: true,
+    name: "Anonymous",
+    role: "user",
+    image: ""
+  });
+
   console.log(`🔗 New connection: ${clientId} from ${clientIp}`);
 
-  // Event handlers
+  // Location update handler
   socket.on("user-location", (data) => {
     if (!validateLocationData(data)) {
       return socket.emit("error", { message: "Invalid location data" });
     }
     
-    connections.get(clientId).lastActivity = new Date();
-    // ... your business logic
+    const user = users.find((u) => u.id === clientId);
+    if (user) {
+      user.lat = data.lat;
+      user.lng = data.lng;
+      user.role = data.role;
+      user.name = data.name || "Anonymous";
+      user.isVisible = true;
+      user.image = data.image || "";
+      connections.get(clientId).lastActivity = new Date();
+      
+      broadcastUsers();
+    }
   });
 
+  // Visibility toggle handler
+  socket.on("visibility-change", (isVisible) => {
+    const user = users.find((u) => u.id === clientId);
+    if (user) {
+      user.isVisible = isVisible;
+      broadcastUsers();
+    }
+  });
+
+  // Ticket creation handler
+  socket.on("create-ticket", (ticket) => {
+    if (validateTicket(ticket)) {
+      tickets.push(ticket);
+      io.emit("new-ticket", ticket);
+      io.emit("all-tickets", tickets);
+    } else {
+      console.error("Invalid ticket data received:", ticket);
+      socket.emit("error", { message: "Invalid ticket data" });
+    }
+  });
+
+  // Request all tickets
+  socket.on("request-tickets", () => {
+    socket.emit("all-tickets", tickets);
+  });
+
+  // Request all users
+  socket.on("request-users", () => {
+    socket.emit("nearby-users", getValidUsers());
+  });
+
+  // Disconnection handler
   socket.on("disconnect", (reason) => {
+    users = users.filter((u) => u.id !== clientId);
     connections.delete(clientId);
+    broadcastUsers();
     console.log(`❌ Disconnected: ${clientId} (Reason: ${reason})`);
   });
 
+  // Error handler
   socket.on("error", (err) => {
     console.error(`🚨 Socket error (${clientId}):`, err);
     socket.emit("fatal-error", { 
@@ -136,7 +196,29 @@ io.on("connection", (socket) => {
       message: "Connection error" 
     });
   });
+
+  // Send initial data to new connection
+  socket.emit("all-tickets", tickets);
+  socket.emit("nearby-users", getValidUsers());
 });
+
+// Helper function to get valid users
+function getValidUsers() {
+  return users.filter(
+    (user) =>
+      user.isVisible &&
+      user.lat !== null &&
+      user.lng !== null &&
+      user.name !== null &&
+      user.role !== null &&
+      user.image !== null
+  );
+}
+
+// Broadcast users to all clients
+function broadcastUsers() {
+  io.emit("nearby-users", getValidUsers());
+}
 
 // Connection monitoring
 setInterval(() => {
@@ -145,7 +227,9 @@ setInterval(() => {
     if (now - conn.lastActivity > 300000) { // 5 minutes inactive
       io.to(id).disconnect(true);
       connections.delete(id);
+      users = users.filter((u) => u.id !== id);
       console.log(`🕒 Disconnected inactive connection: ${id}`);
+      broadcastUsers();
     }
   });
 }, 60000); // Run every minute
@@ -165,7 +249,9 @@ server.listen(PORT, "0.0.0.0", () => {
   🔐 SSL Configuration:
   - TLS: v${sslConfig.minVersion}
   - Ciphers: ${sslConfig.ciphers}
-  - Connections: ${connections.size}
+  - Active connections: ${connections.size}
+  - Tracked users: ${users.length}
+  - Active tickets: ${tickets.length}
   `);
 });
 
