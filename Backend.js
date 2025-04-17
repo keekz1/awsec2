@@ -1,45 +1,66 @@
 const express = require("express");
+const fs = require("fs");
+const https = require("https");
 const http = require("http");
 const socketIo = require("socket.io");
 const cors = require("cors");
 
 const app = express();
-const server = http.createServer(app);
-const io = require("socket.io")(server, {
+
+// 🔐 Add security headers
+app.use((req, res, next) => {
+  res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  next();
+});
+
+// ✅ Use environment variables for SSL paths (fallback to default if not set)
+const keyPath = process.env.SSL_KEY_PATH || "/etc/letsencrypt/live/api.wesynchro.com/privkey.pem";
+const certPath = process.env.SSL_CERT_PATH || "/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem";
+
+// 📜 Read SSL certificates
+const server = https.createServer(
+  {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath),
+  },
+  app
+);
+
+// 🔌 Configure Socket.IO
+const io = socketIo(server, {
   cors: {
     origin: [
       "https://synchro-kappa.vercel.app",
       "https://www.wesynchro.com",
-      "http://localhost:3000",
-      "http://18.175.220.231"
+      "http://localhost:3000"
     ],
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
   },
-  // Updated transport settings:
   transports: ["websocket", "polling"],
   allowUpgrades: true,
-  perMessageDeflate: false, // Disable compression for debugging
-  // Timeout settings:
-  pingTimeout: 30000,  // Reduced from 60000
-  pingInterval: 10000, // Reduced from 25000
-  // Protocol settings:
+  perMessageDeflate: false,
+  pingTimeout: 30000,
+  pingInterval: 10000,
   allowEIO3: true,
-  allowEIO4: true,  // Explicitly enable v4
-  // Security:
+  allowEIO4: true,
   cookie: false,
   serveClient: false,
-  // New important settings:
   connectTimeout: 5000,
-  maxHttpBufferSize: 1e8  // 100MB max payload
+  maxHttpBufferSize: 1e8,
 });
+
+// 📦 Middleware
 app.use(cors());
-app.use(express.json()); // Add this line to parse JSON request bodies
+app.use(express.json());
 
-const PORT = process.env.PORT || 80;
+const PORT = process.env.PORT || 443;
 let users = [];
-let tickets = []; // Array to store tickets
+let tickets = [];
 
+// 🔁 Socket.IO logic
 io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`);
 
@@ -78,7 +99,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("create-ticket", (ticket) => {
-    // Basic validation to ensure all required fields are present
     if (
       ticket &&
       ticket.id &&
@@ -88,9 +108,9 @@ io.on("connection", (socket) => {
       ticket.creatorId &&
       ticket.creatorName
     ) {
-      tickets.push(ticket); // Add the ticket to the tickets array
-      io.emit("new-ticket", ticket); // Notify all clients about the new ticket
-      io.emit("all-tickets", tickets); // Notify all clients with the updated ticket list.
+      tickets.push(ticket);
+      io.emit("new-ticket", ticket);
+      io.emit("all-tickets", tickets);
     } else {
       console.error("Invalid ticket data received:", ticket);
     }
@@ -114,12 +134,13 @@ io.on("connection", (socket) => {
     );
 
     io.emit("nearby-users", validUsers);
-    io.emit("all-tickets", tickets); // Send all tickets to newly connected clients
+    io.emit("all-tickets", tickets);
   }
 
-  broadcastUsers(); // Send initial users and tickets list
+  broadcastUsers();
 });
 
-server.listen(80, "0.0.0.0", () => {  // Explicitly listen on all interfaces
-  console.log("Server running on port 80");
+// ✅ Use port 443 for HTTPS
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Secure server running on port ${PORT}`);
 });
