@@ -16,20 +16,22 @@ const io = require("socket.io")(server, {
     methods: ["GET", "POST"],
     credentials: true
   },
-  // Critical transport settings:
+  // Updated transport settings:
   transports: ["websocket", "polling"],
   allowUpgrades: true,
-  perMessageDeflate: {
-    threshold: 1024 // Enable compression
-  },
-  // Timeout configurations:
-  pingTimeout: 60000,
-  pingInterval: 25000,
-  // Protocol compatibility:
-  allowEIO3: true, // For v2/v3 clients
+  perMessageDeflate: false, // Disable compression for debugging
+  // Timeout settings:
+  pingTimeout: 30000,  // Reduced from 60000
+  pingInterval: 10000, // Reduced from 25000
+  // Protocol settings:
+  allowEIO3: true,
+  allowEIO4: true,  // Explicitly enable v4
   // Security:
   cookie: false,
-  serveClient: false
+  serveClient: false,
+  // New important settings:
+  connectTimeout: 5000,
+  maxHttpBufferSize: 1e8  // 100MB max payload
 });
 app.use(cors());
 app.use(express.json()); // Add this line to parse JSON request bodies
