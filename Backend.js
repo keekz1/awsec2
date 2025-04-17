@@ -27,9 +27,7 @@ app.use(cors({
 const sslConfig = {
   key: fs.readFileSync(process.env.SSL_KEY_PATH || "/etc/letsencrypt/live/api.wesynchro.com/privkey.pem"),
   cert: fs.readFileSync(process.env.SSL_CERT_PATH || "/etc/letsencrypt/live/api.wesynchro.com/fullchain.pem"),
-  ca: [
-    fs.readFileSync(process.env.SSL_CHAIN_PATH || "/etc/letsencrypt/live/api.wesynchro.com/chain.pem")
-  ],
+  // Remove the 'ca' property entirely - fullchain.pem already includes intermediates
   minVersion: "TLSv1.2",
   ciphers: [
     "ECDHE-ECDSA-AES128-GCM-SHA256",
