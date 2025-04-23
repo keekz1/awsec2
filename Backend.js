@@ -5,13 +5,11 @@ const socketIo = require("socket.io");
 const cors = require("cors");
 const helmet = require("helmet");
 
-// Environment variables setup
-require("dotenv").config();
+ require("dotenv").config();
 
 const app = express();
 
-// 🔒 Enhanced Security Middleware
-app.use(helmet({
+ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -28,8 +26,7 @@ app.use(helmet({
   referrerPolicy: { policy: "same-origin" }
 }));
 
-// 🌐 CORS Configuration
-const corsOptions = {
+ const corsOptions = {
   origin: [
     "https://synchro-kappa.vercel.app",
     "https://www.wesynchro.com", 
@@ -43,7 +40,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// 📜 SSL Configuration
+//  SSL Configuration
 const sslConfig = {
   key: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com-0001/privkey.pem'),
   cert: fs.readFileSync('/etc/letsencrypt/live/api.wesynchro.com-0001/fullchain.pem'),
@@ -60,7 +57,7 @@ const sslConfig = {
 
 const server = https.createServer(sslConfig, app);
 
-// 🔌 WebSocket Server Configuration
+//WebSocket Server Configuration
 const io = socketIo(server, {
   cors: corsOptions,
   transports: ["websocket"],
@@ -87,7 +84,7 @@ const connections = new Map();
 let users = [];
 let tickets = [];
 
-// 🛠️ Middleware
+// Middleware
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
@@ -185,12 +182,12 @@ io.on("connection", (socket) => {
     users = users.filter((u) => u.id !== clientId);
     connections.delete(clientId);
     broadcastUsers();
-    console.log(`❌ Disconnected: ${clientId} (Reason: ${reason})`);
+    console.log(` Disconnected: ${clientId} (Reason: ${reason})`);
   });
 
   // Error handler
   socket.on("error", (err) => {
-    console.error(`🚨 Socket error (${clientId}):`, err);
+    console.error(` Socket error (${clientId}):`, err);
     socket.emit("fatal-error", { 
       code: "WS_ERROR", 
       message: "Connection error" 
@@ -200,6 +197,13 @@ io.on("connection", (socket) => {
   // Send initial data to new connection
   socket.emit("all-tickets", tickets);
   socket.emit("nearby-users", getValidUsers());
+  socket.on('update-ticket', (data) => {
+    // Verify user owns the ticket
+    if (tickets[data.id]?.creatorId === socket.id) {
+      tickets[data.id].message = data.message;
+      io.emit('ticket-updated', tickets[data.id]);
+    }
+  });
 });
 
 // Helper function to get valid users
@@ -234,19 +238,14 @@ setInterval(() => {
   });
 }, 60000); // Run every minute
 
-// 🚀 Server Startup
+ 
 const PORT = process.env.PORT || 443;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`
-  ██████╗ ███████╗███████╗██████╗ ██╗   ██╗
-  ██╔══██╗██╔════╝██╔════╝██╔══██╗╚██╗ ██╔╝
-  ██████╔╝█████╗  █████╗  ██████╔╝ ╚████╔╝ 
-  ██╔══██╗██╔══╝  ██╔══╝  ██╔══██╗  ╚██╔╝  
-  ██║  ██║███████╗███████╗██║  ██║   ██║   
-  ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝   ╚═╝   
+ 
   
-  ✅ Secure server running on port ${PORT}
-  🔐 SSL Configuration:
+    Secure server running on port ${PORT}
+    SSL Configuration:
   - TLS: v${sslConfig.minVersion}
   - Ciphers: ${sslConfig.ciphers}
   - Active connections: ${connections.size}
@@ -257,12 +256,12 @@ server.listen(PORT, "0.0.0.0", () => {
 
 // Error handling
 process.on("uncaughtException", (err) => {
-  console.error("🆘 Uncaught Exception:", err);
+  console.error("  Uncaught Exception:", err);
   process.exit(1);
 });
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
+  console.error(" Unhandled Rejection at:", promise, "reason:", reason);
 });
 
 // Validation utilities
